@@ -1,0 +1,1069 @@
+--// Premium Hybrid System UI
+--// Redesigned by Antigravity for Nguyễn Đức Chung
+--// Modern Glass / Neon Theme
+
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local TS = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+local player = Players.LocalPlayer
+local pgui = player:WaitForChild("PlayerGui")
+local VIM = game:GetService("VirtualInputManager")
+
+--// Remove old UI if exists
+if pgui:FindFirstChild("HybridSystemUI") then
+    pgui.HybridSystemUI:Destroy()
+end
+
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "HybridSystemUI"
+screenGui.Parent = pgui
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 999
+
+--// Theme Configuration
+local Theme = {
+    Main = Color3.fromRGB(15, 17, 22),
+    Secondary = Color3.fromRGB(22, 24, 30),
+    Accent = Color3.fromRGB(0, 180, 255),
+    AccentLight = Color3.fromRGB(80, 210, 255),
+    Text = Color3.fromRGB(255, 255, 255),
+    TextMuted = Color3.fromRGB(150, 155, 170),
+    Outline = Color3.fromRGB(40, 43, 50),
+    Glow = Color3.fromRGB(0, 180, 255),
+    Card = Color3.fromRGB(28, 30, 38),
+    Danger = Color3.fromRGB(255, 60, 60),
+}
+
+local Settings = {
+    AutoSkill = false,
+    Skills = {
+        Z = false,
+        X = false,
+        C = false,
+        V = false,
+        B = false,
+        F = false
+    },
+    AutoEquip = false,
+    SelectedTool = "None",
+    AutoFarm = false,
+    AutoHaki = false
+}
+
+--// Helper Functions
+local function getInventoryTools()
+    local tools = {}
+    if player.Backpack then
+        for _, v in ipairs(player.Backpack:GetChildren()) do
+            if v:IsA("Tool") then tools[#tools + 1] = v.Name end
+        end
+    end
+    if player.Character then
+        for _, v in ipairs(player.Character:GetChildren()) do
+            if v:IsA("Tool") then tools[#tools + 1] = v.Name end
+        end
+    end
+    return tools
+end
+
+local function isHakiEnabled()
+    local char = player.Character
+    if not char then return false end
+    
+    -- 1. Check for specific V1/Status values (Aggressive search)
+    for _, v in ipairs(char:GetDescendants()) do
+        -- Check V1 logic
+        if v.Name:lower() == "v1" and typeof(v.Value) == "boolean" then
+            if not v.Value then return true end
+        end
+        -- Check A/D status in StringValues
+        if v:IsA("StringValue") and v.Value == "A" then
+            return true
+        end
+    end
+    
+    -- 2. Check for SelectionBox (Common Aura/Haki effect)
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("SelectionBox") then
+            return true
+        end
+    end
+    
+    -- 3. Check for specific Child Objects
+    if char:FindFirstChild("HasHaki") or char:FindFirstChild("Aura") or char:FindFirstChild("Haki") then
+        return true
+    end
+    
+    -- 4. Check for Particle Effects (Haki smoke/glow) - CONFIRMED WORKING
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("ParticleEmitter") and v.Enabled then
+            if v.Name:lower():find("haki") or v.Name:lower():find("aura") or v.Name:lower():find("effect") then
+                return true
+            end
+        end
+    end
+    
+    -- 5. Visual check (Only if arm is DARK)
+    local arm = char:FindFirstChild("Left Arm") or char:FindFirstChild("LeftHand")
+    if arm and arm:IsA("BasePart") and arm.Color.R < 0.2 then
+        return true
+    end
+    
+    return false
+end
+
+--// Utility Functions
+local function corner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 12)
+    c.Parent = parent
+    return c
+end
+
+local function stroke(parent, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color or Theme.Outline
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0
+    s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s.Parent = parent
+    return s
+end
+
+local function gradient(parent, colors, rotation)
+    local g = Instance.new("UIGradient")
+    g.Color = colors or ColorSequence.new(Theme.Accent, Theme.AccentLight)
+    g.Rotation = rotation or 0
+    g.Parent = parent
+    return g
+end
+
+local function tween(obj, info, goal)
+    local t = TS:Create(obj, info, goal)
+    t:Play()
+    return t
+end
+
+local function label(parent, text, size, pos, textSize, color, bold)
+    local t = Instance.new("TextLabel")
+    t.Text = text
+    t.Size = size or UDim2.new(1, 0, 1, 0)
+    t.Position = pos or UDim2.new(0, 0, 0, 0)
+    t.BackgroundTransparency = 1
+    t.TextColor3 = color or Theme.Text
+    t.Font = bold and Enum.Font.GothamBold or Enum.Font.Gotham
+    t.TextSize = textSize or 14
+    t.TextXAlignment = Enum.TextXAlignment.Left
+    t.TextYAlignment = Enum.TextYAlignment.Center
+    t.RichText = true
+    t.TextWrapped = true
+    t.ZIndex = (parent.ZIndex or 1) + 1
+    t.Parent = parent
+    return t
+end
+
+--// Main Window Structure
+local main = Instance.new("Frame")
+main.Name = "MainWindow"
+main.Size = UDim2.new(0, 600, 0, 420)
+main.Position = UDim2.new(0.5, -300, 0.5, -210)
+main.BackgroundColor3 = Theme.Main
+main.BorderSizePixel = 0
+main.Active = true
+main.ClipsDescendants = true
+main.Parent = screenGui
+
+corner(main, 16)
+local mainStroke = stroke(main, Theme.Outline, 1.2, 0.2)
+gradient(mainStroke, ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Theme.Outline),
+    ColorSequenceKeypoint.new(0.5, Theme.Accent),
+    ColorSequenceKeypoint.new(1, Theme.Outline)
+}), 45)
+
+--// Top Bar
+local topBar = Instance.new("Frame")
+topBar.Name = "TopBar"
+topBar.Size = UDim2.new(1, 0, 0, 42)
+topBar.BackgroundColor3 = Theme.Secondary
+topBar.BackgroundTransparency = 0.5
+topBar.BorderSizePixel = 0
+topBar.ZIndex = 5
+topBar.Parent = main
+
+corner(topBar, 16)
+local topStroke = stroke(topBar, Theme.Outline, 1, 0.5)
+
+-- Logo / Title
+local logoArea = Instance.new("Frame")
+logoArea.Size = UDim2.new(0, 180, 1, 0)
+logoArea.BackgroundTransparency = 1
+logoArea.Parent = topBar
+
+label(logoArea, "<font color='#00B4FF'>HYBRID</font> SYSTEM", UDim2.new(1, 0, 1, 0), UDim2.new(0, 20, 0, 0), 16, Theme.Text, true)
+
+-- Window Buttons
+local controls = Instance.new("Frame")
+controls.Size = UDim2.new(0, 100, 0, 28)
+controls.Position = UDim2.new(1, -110, 0.5, -14)
+controls.BackgroundTransparency = 1
+controls.Parent = topBar
+
+local function createWinBtn(text, color, isClose)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 28, 0, 28)
+    btn.BackgroundColor3 = Theme.Card
+    btn.Text = text
+    btn.TextColor3 = Theme.TextMuted
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    btn.AutoButtonColor = false
+    btn.Parent = controls
+    
+    corner(btn, 8)
+    stroke(btn, Theme.Outline, 1, 0.5)
+
+    btn.MouseEnter:Connect(function()
+        tween(btn, TweenInfo.new(0.2), {BackgroundColor3 = isClose and Theme.Danger or Theme.Accent, TextColor3 = Color3.new(1,1,1)})
+    end)
+    btn.MouseLeave:Connect(function()
+        tween(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Card, TextColor3 = Theme.TextMuted})
+    end)
+    
+    return btn
+end
+
+local listLayout = Instance.new("UIListLayout")
+listLayout.FillDirection = Enum.FillDirection.Horizontal
+listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+listLayout.Padding = UDim.new(0, 8)
+listLayout.Parent = controls
+
+local minBtn = createWinBtn("-", Theme.Accent)
+local maxBtn = createWinBtn("□", Theme.Accent)
+local clsBtn = createWinBtn("×", Theme.Danger, true)
+
+clsBtn.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+
+--// Body
+local body = Instance.new("Frame")
+body.Size = UDim2.new(1, 0, 1, -42)
+body.Position = UDim2.new(0, 0, 0, 42)
+body.BackgroundTransparency = 1
+body.Parent = main
+
+--// Close Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 30, 0, 30)
+closeBtn.Position = UDim2.new(1, -35, 0, 5)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "×"
+closeBtn.TextColor3 = Theme.TextMuted
+closeBtn.Font = Enum.Font.GothamMedium
+closeBtn.TextSize = 24
+closeBtn.Parent = topBar
+
+closeBtn.MouseEnter:Connect(function() tween(closeBtn, TweenInfo.new(0.2), {TextColor3 = Theme.Danger}) end)
+closeBtn.MouseLeave:Connect(function() tween(closeBtn, TweenInfo.new(0.2), {TextColor3 = Theme.TextMuted}) end)
+
+local function unloadScript()
+    Settings.AutoFarm = false
+    Settings.AutoSkill = false
+    Settings.AutoHaki = false
+    Settings.AutoEquip = false
+    
+    local char = player.Character
+    local hum = char and char:FindFirstChild("Humanoid")
+    if hum then hum.PlatformStand = false end
+    
+    screenGui:Destroy()
+end
+
+closeBtn.MouseButton1Click:Connect(unloadScript)
+
+--// Floating Toggle Button
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Name = "ToggleUI"
+toggleBtn.Size = UDim2.new(0, 45, 0, 45)
+toggleBtn.Position = UDim2.new(0, 20, 0.5, -22)
+toggleBtn.BackgroundColor3 = Theme.Main
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Text = "K"
+toggleBtn.TextColor3 = Theme.Accent
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 20
+toggleBtn.Parent = screenGui
+toggleBtn.Draggable = true -- Allow moving the toggle button
+
+corner(toggleBtn, 10)
+stroke(toggleBtn, Theme.Outline, 1.5)
+
+-- Glow effect for toggle button
+local toggleGlow = Instance.new("ImageLabel")
+toggleGlow.Name = "Glow"
+toggleGlow.BackgroundTransparency = 1
+toggleGlow.Position = UDim2.new(0, -10, 0, -10)
+toggleGlow.Size = UDim2.new(1, 20, 1, 20)
+toggleGlow.Image = "rbxassetid://5028857084"
+toggleGlow.ImageColor3 = Theme.Accent
+toggleGlow.ImageTransparency = 0.8
+toggleGlow.Parent = toggleBtn
+
+local function toggleUI()
+    main.Visible = not main.Visible
+end
+
+toggleBtn.MouseButton1Click:Connect(toggleUI)
+
+--// Sidebar
+local sidebar = Instance.new("Frame")
+sidebar.Name = "Sidebar"
+sidebar.Size = UDim2.new(0, 180, 1, 0)
+sidebar.BackgroundColor3 = Theme.Secondary
+sidebar.BackgroundTransparency = 0.3
+sidebar.BorderSizePixel = 0
+sidebar.ZIndex = 2
+sidebar.Parent = body
+
+corner(sidebar, 16)
+
+local sidebarContent = Instance.new("ScrollingFrame")
+sidebarContent.Size = UDim2.new(1, 0, 1, -60)
+sidebarContent.Position = UDim2.new(0, 0, 0, 20)
+sidebarContent.BackgroundTransparency = 1
+sidebarContent.BorderSizePixel = 0
+sidebarContent.ScrollBarThickness = 0
+sidebarContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+sidebarContent.Parent = sidebar
+
+local sideList = Instance.new("UIListLayout")
+sideList.Padding = UDim.new(0, 4)
+sideList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+sideList.Parent = sidebarContent
+
+local function createSidebarBtn(name, icon)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0, 160, 0, 38)
+    btn.BackgroundColor3 = Theme.Card
+    btn.BackgroundTransparency = 1
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Parent = sidebarContent
+    
+    corner(btn, 10)
+    
+    local indicator = Instance.new("Frame")
+    indicator.Name = "Indicator"
+    indicator.Size = UDim2.new(0, 3, 0, 16)
+    indicator.Position = UDim2.new(0, 0, 0.5, -8)
+    indicator.BackgroundColor3 = Theme.Accent
+    indicator.BackgroundTransparency = 1
+    indicator.BorderSizePixel = 0
+    indicator.Parent = btn
+    corner(indicator, 2)
+
+    local txt = label(btn, name, UDim2.new(1, -24, 1, 0), UDim2.new(0, 12, 0, 0), 13, Theme.TextMuted, true)
+    txt.Name = "Title"
+    
+    btn.MouseEnter:Connect(function()
+        if indicator.BackgroundTransparency ~= 0 then
+            tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.9, BackgroundColor3 = Theme.Accent})
+            tween(txt, TweenInfo.new(0.2), {TextColor3 = Theme.Text})
+        end
+    end)
+    
+    btn.MouseLeave:Connect(function()
+        if indicator.BackgroundTransparency ~= 0 then
+            tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 1})
+            tween(txt, TweenInfo.new(0.2), {TextColor3 = Theme.TextMuted})
+        end
+    end)
+    
+    local function select()
+        for _, other in ipairs(sidebarContent:GetChildren()) do
+            if other:IsA("TextButton") then
+                local otherInd = other:FindFirstChild("Indicator")
+                local otherTxt = other:FindFirstChild("Title")
+                
+                if other == btn then
+                    if otherInd then tween(otherInd, TweenInfo.new(0.3), {BackgroundTransparency = 0}) end
+                    if otherTxt then tween(otherTxt, TweenInfo.new(0.3), {TextColor3 = Theme.Accent}) end
+                    tween(other, TweenInfo.new(0.3), {BackgroundTransparency = 0.92, BackgroundColor3 = Theme.Accent})
+                else
+                    if otherInd then tween(otherInd, TweenInfo.new(0.3), {BackgroundTransparency = 1}) end
+                    if otherTxt then tween(otherTxt, TweenInfo.new(0.3), {TextColor3 = Theme.TextMuted}) end
+                    tween(other, TweenInfo.new(0.3), {BackgroundTransparency = 1})
+                end
+            end
+        end
+    end
+    
+    return btn, select
+end
+
+local mainBtn, selectMain = createSidebarBtn("Dashboard", "⌂")
+local farmBtn, selectFarm = createSidebarBtn("Auto Farm", "🚜")
+local combatBtn, selectCombat = createSidebarBtn("Combat", "⚔️")
+
+--// Content Area
+local content = Instance.new("Frame")
+content.Size = UDim2.new(1, -180, 1, 0)
+content.Position = UDim2.new(0, 180, 0, 0)
+content.BackgroundTransparency = 1
+content.Parent = body
+
+local contentHolder = Instance.new("ScrollingFrame")
+contentHolder.Size = UDim2.new(1, -40, 1, -40)
+contentHolder.Position = UDim2.new(0, 20, 0, 20)
+contentHolder.BackgroundTransparency = 1
+contentHolder.BorderSizePixel = 0
+contentHolder.ScrollBarThickness = 2
+contentHolder.ScrollBarImageColor3 = Theme.Accent
+contentHolder.CanvasSize = UDim2.new(0, 0, 0, 1000)
+contentHolder.Parent = content
+
+local contentPadding = Instance.new("UIPadding")
+contentPadding.PaddingLeft = UDim.new(0, 5)
+contentPadding.PaddingRight = UDim.new(0, 15) -- Extra space for scrollbar
+contentPadding.PaddingTop = UDim.new(0, 2)
+contentPadding.PaddingBottom = UDim.new(0, 5)
+contentPadding.Parent = contentHolder
+
+local contentList = Instance.new("UIListLayout")
+contentList.Padding = UDim.new(0, 10)
+contentList.SortOrder = Enum.SortOrder.LayoutOrder
+contentList.Parent = contentHolder
+
+--// UI Utilities
+local function cleanName(str)
+    return str:gsub("%[.-%]", ""):gsub("<.-%>", ""):gsub("^%s*(.-)%s*$", "%1")
+end
+
+local function findMob(targetName)
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and v:FindFirstChild("HumanoidRootPart") then
+            local hum = v.Humanoid
+            local name = v.Name
+            
+            if hum.DisplayName ~= "" and hum.DisplayName ~= "Humanoid" then
+                name = cleanName(hum.DisplayName)
+            else
+                for _, desc in ipairs(v:GetDescendants()) do
+                    if desc:IsA("BillboardGui") then
+                        local tl = desc:FindFirstChildWhichIsA("TextLabel")
+                        if tl and tl.Text ~= "" and not tl.Text:find("/") then
+                            name = cleanName(tl.Text)
+                            break
+                        end
+                    end
+                end
+            end
+            
+            if name == targetName then
+                return v.HumanoidRootPart
+            end
+        end
+    end
+    return nil
+end
+
+local function clearContent()
+    for _, child in ipairs(contentHolder:GetChildren()) do
+        if not child:IsA("UIListLayout") and not child:IsA("UIPadding") then
+            child:Destroy()
+        end
+    end
+end
+
+local function getGameMobs()
+    local mobs = {}
+    local seen = {}
+    
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("Model") and v:FindFirstChild("Humanoid") and not Players:GetPlayerFromCharacter(v) then
+            local hum = v:FindFirstChild("Humanoid")
+            local possibleNames = {}
+            
+            if hum and hum.DisplayName ~= "" and hum.DisplayName ~= "Humanoid" then
+                possibleNames[#possibleNames + 1] = cleanName(hum.DisplayName)
+            end
+            
+            for _, desc in ipairs(v:GetDescendants()) do
+                if desc:IsA("BillboardGui") then
+                    local tl = desc:FindFirstChildWhichIsA("TextLabel")
+                    if tl and tl.Text ~= "" and not tl.Text:find("/") and not tl.Text:find("%%") then
+                        possibleNames[#possibleNames + 1] = cleanName(tl.Text)
+                    end
+                elseif desc:IsA("StringValue") and (desc.Name:find("Name") or desc.Name:find("Display")) then
+                    possibleNames[#possibleNames + 1] = cleanName(desc.Value)
+                end
+            end
+            
+            possibleNames[#possibleNames + 1] = v.Name
+            
+            local bestName = nil
+            for _, n in ipairs(possibleNames) do
+                if n ~= "" and n:len() > 1 then
+                    if not (n:len() > 20 and n:find("-")) and not n:find("^0x") then
+                        bestName = n
+                        break
+                    end
+                end
+            end
+            
+            if not bestName and #possibleNames > 0 then
+                bestName = possibleNames[1]
+            end
+            
+            if bestName and bestName ~= "" and not seen[bestName] then
+                mobs[#mobs + 1] = bestName
+                seen[bestName] = true
+            end
+        end
+    end
+    table.sort(mobs)
+    return mobs
+end
+
+local function createCard(title, desc, symbol)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, -10, 0, 85)
+    card.BackgroundColor3 = Theme.Card
+    card.BorderSizePixel = 0
+    card.Parent = contentHolder
+    
+    corner(card, 10)
+    local s = stroke(card, Theme.Outline, 1, 0.6)
+    
+    -- Decorative Accent Bar
+    local bar = Instance.new("Frame")
+    bar.Size = UDim2.new(0, 4, 0.9, 0)
+    bar.Position = UDim2.new(0, 0, 0.5, 0)
+    bar.AnchorPoint = Vector2.new(0, 0.5)
+    bar.BackgroundColor3 = Theme.Accent
+    bar.BorderSizePixel = 0
+    bar.Parent = card
+    corner(bar, 2)
+    gradient(bar)
+
+    local titleLbl = label(card, (symbol or "◆") .. "  " .. title:upper(), UDim2.new(1, -30, 0, 18), UDim2.new(0, 16, 0, 12), 11, Theme.Accent, true)
+    local descLbl = label(card, desc, UDim2.new(1, -30, 0, 45), UDim2.new(0, 16, 0, 34), 12, Theme.TextMuted, false)
+    descLbl.TextYAlignment = Enum.TextYAlignment.Top
+    
+    card.MouseEnter:Connect(function()
+        tween(card, TweenInfo.new(0.3), {BackgroundColor3 = Theme.Secondary, BackgroundTransparency = 0.2})
+        tween(s, TweenInfo.new(0.3), {Color = Theme.Accent, Transparency = 0.4})
+        tween(bar, TweenInfo.new(0.3), {Size = UDim2.new(0, 5, 1, 0)})
+    end)
+    card.MouseLeave:Connect(function()
+        tween(card, TweenInfo.new(0.3), {BackgroundColor3 = Theme.Card, BackgroundTransparency = 0})
+        tween(s, TweenInfo.new(0.3), {Color = Theme.Outline, Transparency = 0.6})
+        tween(bar, TweenInfo.new(0.3), {Size = UDim2.new(0, 4, 0.9, 0)})
+    end)
+    
+    return card
+end
+
+local function createToggle(parent, text, default, callback)
+    local toggleFrame = Instance.new("Frame")
+    toggleFrame.Size = UDim2.new(1, -10, 0, 48)
+    toggleFrame.BackgroundColor3 = Theme.Card
+    toggleFrame.BorderSizePixel = 0
+    toggleFrame.Parent = parent
+    
+    corner(toggleFrame, 10)
+    local s = stroke(toggleFrame, Theme.Outline, 1, 0.6)
+    
+    local txt = label(toggleFrame, "   " .. text, UDim2.new(1, -70, 1, 0), nil, 13, Theme.Text, false)
+    
+    local switch = Instance.new("TextButton")
+    switch.Name = "Switch"
+    switch.Size = UDim2.new(0, 44, 0, 22)
+    switch.Position = UDim2.new(1, -54, 0.5, -11)
+    switch.BackgroundColor3 = default and Theme.Accent or Theme.Outline
+    switch.Text = ""
+    switch.AutoButtonColor = false
+    switch.Parent = toggleFrame
+    corner(switch, 11)
+    
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 18, 0, 18)
+    circle.Position = default and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)
+    circle.BackgroundColor3 = Color3.new(1,1,1)
+    circle.Parent = switch
+    corner(circle, 9)
+    
+    local state = default
+    switch.MouseButton1Click:Connect(function()
+        state = not state
+        Settings[text:gsub(" ", "")] = state -- Simple mapping or use a specific key
+        if text == "Auto Skill X C" then Settings.AutoSkill = state end
+        
+        tween(switch, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {BackgroundColor3 = state and Theme.Accent or Theme.Outline})
+        tween(circle, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {Position = state and UDim2.new(1, -21, 0.5, -9) or UDim2.new(0, 3, 0.5, -9)})
+        
+        if callback then callback(state) end
+    end)
+    
+    toggleFrame.MouseEnter:Connect(function()
+        tween(s, TweenInfo.new(0.3), {Color = Theme.Accent, Transparency = 0.4})
+    end)
+    toggleFrame.MouseLeave:Connect(function()
+        tween(s, TweenInfo.new(0.3), {Color = Theme.Outline, Transparency = 0.6})
+    end)
+    
+    return toggleFrame
+end
+
+local function createDropdown(parent, text, options, default, callback)
+    local dropdownFrame = Instance.new("Frame")
+    dropdownFrame.Size = UDim2.new(1, -10, 0, 48)
+    dropdownFrame.BackgroundColor3 = Theme.Card
+    dropdownFrame.BorderSizePixel = 0
+    dropdownFrame.ClipsDescendants = true
+    dropdownFrame.Parent = parent
+    
+    corner(dropdownFrame, 10)
+    local s = stroke(dropdownFrame, Theme.Outline, 1, 0.6)
+
+    local mainBtn = Instance.new("TextButton")
+    mainBtn.Size = UDim2.new(1, 0, 0, 48)
+    mainBtn.BackgroundTransparency = 1
+    mainBtn.Text = ""
+    mainBtn.AutoButtonColor = false
+    mainBtn.Parent = dropdownFrame
+
+    local title = label(mainBtn, "   " .. text, UDim2.new(1, -40, 1, 0), nil, 13, Theme.Text, false)
+    local selectedLbl = label(mainBtn, default or "None", UDim2.new(1, -60, 1, 0), UDim2.new(0, 0, 0, 0), 12, Theme.Accent, true)
+    selectedLbl.TextXAlignment = Enum.TextXAlignment.Right
+    
+    local arrow = label(mainBtn, "▼", UDim2.new(0, 30, 1, 0), UDim2.new(1, -30, 0, 0), 10, Theme.TextMuted, false)
+    arrow.TextXAlignment = Enum.TextXAlignment.Center
+
+    local optionsHolder = Instance.new("ScrollingFrame")
+    optionsHolder.Size = UDim2.new(1, -20, 0, 140)
+    optionsHolder.Position = UDim2.new(0, 10, 0, 48)
+    optionsHolder.BackgroundTransparency = 1
+    optionsHolder.BorderSizePixel = 0
+    optionsHolder.ScrollBarThickness = 2
+    optionsHolder.ScrollBarImageColor3 = Theme.Accent
+    optionsHolder.Visible = false
+    optionsHolder.Parent = dropdownFrame
+    
+    local optList = Instance.new("UIListLayout")
+    optList.Padding = UDim.new(0, 4)
+    optList.Parent = optionsHolder
+    
+    local function updateCanvas()
+        optionsHolder.CanvasSize = UDim2.new(0, 0, 0, optList.AbsoluteContentSize.Y + 10)
+    end
+    optList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateCanvas)
+
+    local isOpen = false
+    mainBtn.MouseButton1Click:Connect(function()
+        isOpen = not isOpen
+        optionsHolder.Visible = true
+        local targetSize = isOpen and UDim2.new(1, -10, 0, 200) or UDim2.new(1, -10, 0, 48)
+        tween(dropdownFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {Size = targetSize})
+        tween(arrow, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {Rotation = isOpen and 180 or 0})
+        if not isOpen then
+            task.delay(0.4, function() if not isOpen then optionsHolder.Visible = false end end)
+        end
+    end)
+
+    for _, opt in ipairs(options) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1, 0, 0, 32)
+        btn.BackgroundColor3 = Theme.Secondary
+        btn.BackgroundTransparency = 0.6
+        btn.Text = "   " .. opt
+        btn.TextColor3 = Theme.TextMuted
+        btn.Font = Enum.Font.Gotham
+        btn.TextSize = 12
+        btn.TextXAlignment = Enum.TextXAlignment.Left
+        btn.AutoButtonColor = false
+        btn.Parent = optionsHolder
+        corner(btn, 6)
+        stroke(btn, Theme.Outline, 1, 0.8)
+        
+        btn.MouseEnter:Connect(function() tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.3, TextColor3 = Theme.Text}) end)
+        btn.MouseLeave:Connect(function() tween(btn, TweenInfo.new(0.2), {BackgroundTransparency = 0.6, TextColor3 = Theme.TextMuted}) end)
+        
+        btn.MouseButton1Click:Connect(function()
+            selectedLbl.Text = opt
+            isOpen = false
+            tween(dropdownFrame, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {Size = UDim2.new(1, -10, 0, 48)})
+            tween(arrow, TweenInfo.new(0.4, Enum.EasingStyle.Quart), {Rotation = 0})
+            task.delay(0.4, function() optionsHolder.Visible = false end)
+            if callback then callback(opt) end
+        end)
+    end
+    
+    return dropdownFrame
+end
+
+local function createButton(parent, text, color, callback)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.5, -5, 0, 36)
+    btn.BackgroundColor3 = color or Theme.Card
+    btn.Text = text
+    btn.TextColor3 = Theme.Text
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 12
+    btn.AutoButtonColor = false
+    btn.Parent = parent
+    
+    corner(btn, 8)
+    local s = stroke(btn, Theme.Outline, 1, 0.6)
+    
+    btn.MouseEnter:Connect(function() 
+        tween(btn, TweenInfo.new(0.2), {BackgroundColor3 = Theme.Secondary})
+        tween(s, TweenInfo.new(0.2), {Color = Theme.Accent})
+    end)
+    btn.MouseLeave:Connect(function() 
+        tween(btn, TweenInfo.new(0.2), {BackgroundColor3 = color or Theme.Card})
+        tween(s, TweenInfo.new(0.2), {Color = Theme.Outline})
+    end)
+    btn.MouseButton1Click:Connect(callback)
+    
+    return btn
+end
+
+local function createTextBox(parent, placeholder, callback)
+    local boxFrame = Instance.new("Frame")
+    boxFrame.Size = UDim2.new(1, -10, 0, 36)
+    boxFrame.BackgroundColor3 = Theme.Card
+    boxFrame.BorderSizePixel = 0
+    boxFrame.Parent = parent
+    corner(boxFrame, 8)
+    stroke(boxFrame, Theme.Outline, 1, 0.6)
+    
+    local icon = label(boxFrame, "🔍", UDim2.new(0, 30, 1, 0), nil, 12, Theme.TextMuted, false)
+    icon.TextXAlignment = Enum.TextXAlignment.Center
+    
+    local input = Instance.new("TextBox")
+    input.Size = UDim2.new(1, -40, 1, 0)
+    input.Position = UDim2.new(0, 35, 0, 0)
+    input.BackgroundTransparency = 1
+    input.Text = ""
+    input.PlaceholderText = placeholder or "Search..."
+    input.TextColor3 = Theme.Text
+    input.PlaceholderColor3 = Theme.TextMuted
+    input.Font = Enum.Font.Gotham
+    input.TextSize = 13
+    input.TextXAlignment = Enum.TextXAlignment.Left
+    input.Parent = boxFrame
+    
+    input.FocusLost:Connect(function()
+        if callback then callback(input.Text) end
+    end)
+    
+    return boxFrame, input
+end
+
+--// Page: Dashboard
+local function showDashboard()
+    clearContent()
+    selectMain()
+    
+    label(contentHolder, "Welcome back, " .. player.Name, UDim2.new(1, 0, 0, 24), nil, 18, Theme.Text, true)
+    
+    createCard("Script Info", "Author: Nguyễn Đức Chung\nVersion: 2.0 Premium\nStatus: Online & Verified", "🛡️")
+    
+    local success, placeInfo = pcall(function() return MarketplaceService:GetProductInfo(game.PlaceId) end)
+    local name = success and placeInfo.Name or "Unknown Game"
+    local uptime = math.floor(workspace.DistributedGameTime)
+    local h, m, s = math.floor(uptime/3600), math.floor((uptime%3600)/60), uptime%60
+    
+    createCard("Server Status", 
+        "Game: " .. name .. 
+        "\nPlayers: " .. #Players:GetPlayers() .. " / " .. Players.MaxPlayers ..
+        "\nTime: " .. game:GetService("Lighting").TimeOfDay ..
+        "\nUptime: " .. string.format("%02d:%02d:%02d", h, m, s),
+        "🌐"
+    )
+end
+
+--// Page: Auto Farm
+local selectedMob = "None"
+local mobSearchText = ""
+
+local function showAutoFarm()
+    clearContent()
+    selectFarm()
+    
+    label(contentHolder, "Auto Farm & Navigation", UDim2.new(1, 0, 0, 24), nil, 18, Theme.Text, true)
+    
+    -- Compact Tool & Farm Section
+    local farmCard = Instance.new("Frame")
+    farmCard.Size = UDim2.new(1, -10, 0, 110)
+    farmCard.BackgroundColor3 = Theme.Card
+    farmCard.Parent = contentHolder
+    corner(farmCard, 10)
+    stroke(farmCard, Theme.Outline, 1, 0.6)
+    
+    local toolLbl = label(farmCard, "Tool: " .. Settings.SelectedTool, UDim2.new(1, -20, 0, 20), UDim2.new(0, 10, 0, 10), 12, Theme.TextMuted, true)
+    local targetLbl = label(farmCard, "Target: <font color='#00B4FF'>" .. selectedMob .. "</font>", UDim2.new(1, -20, 0, 20), UDim2.new(0, 10, 0, 30), 12, Theme.Text, true)
+    targetLbl.RichText = true
+
+    local actionRow = Instance.new("Frame")
+    actionRow.Size = UDim2.new(1, -20, 0, 36)
+    actionRow.Position = UDim2.new(0, 10, 0, 60)
+    actionRow.BackgroundTransparency = 1
+    actionRow.Parent = farmCard
+    
+    local actionList = Instance.new("UIListLayout")
+    actionList.FillDirection = Enum.FillDirection.Horizontal
+    actionList.Padding = UDim.new(0, 8)
+    actionList.Parent = actionRow
+    
+    createButton(actionRow, "Instant TP", Theme.Accent, function()
+        local hrp = findMob(selectedMob)
+        if hrp and player.Character then
+            player.Character:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 5, 0))
+        end
+    end).Size = UDim2.new(0.4, 0, 1, 0)
+    
+    local afBtn = createButton(actionRow, Settings.AutoFarm and "Auto Farm: ON" or "Auto Farm: OFF", Settings.AutoFarm and Theme.Accent or nil, function()
+        Settings.AutoFarm = not Settings.AutoFarm
+        showAutoFarm()
+    end)
+    afBtn.Size = UDim2.new(0.6, -8, 1, 0)
+    
+    label(contentHolder, "Settings", UDim2.new(1, 0, 0, 20), nil, 14, Theme.TextMuted, true)
+    
+    createToggle(contentHolder, "Auto Equip Weapon", Settings.AutoEquip, function(v)
+        Settings.AutoEquip = v
+    end)
+    
+    local tools = getInventoryTools()
+    createDropdown(contentHolder, "Select Weapon", #tools > 0 and tools or {"No Tools Found"}, Settings.SelectedTool, function(v)
+        Settings.SelectedTool = v
+        showAutoFarm()
+    end)
+
+    local sectionHeader = Instance.new("Frame")
+    sectionHeader.Size = UDim2.new(1, -10, 0, 30)
+    sectionHeader.BackgroundTransparency = 1
+    sectionHeader.Parent = contentHolder
+    
+    label(sectionHeader, "Search & Select", UDim2.new(1, -100, 1, 0), nil, 14, Theme.TextMuted, true)
+    
+    local refreshBtn = Instance.new("TextButton")
+    refreshBtn.Size = UDim2.new(0, 80, 0, 24)
+    refreshBtn.Position = UDim2.new(1, -85, 0.5, -12)
+    refreshBtn.BackgroundColor3 = Theme.Secondary
+    refreshBtn.Text = "↻ Refresh"
+    refreshBtn.TextColor3 = Theme.Accent
+    refreshBtn.Font = Enum.Font.GothamBold
+    refreshBtn.TextSize = 11
+    refreshBtn.AutoButtonColor = false
+    refreshBtn.Parent = sectionHeader
+    corner(refreshBtn, 6)
+    stroke(refreshBtn, Theme.Outline, 1, 0.8)
+    
+    refreshBtn.MouseButton1Click:Connect(function()
+        showAutoFarm()
+    end)
+
+    local searchBox, searchInput = createTextBox(contentHolder, "Find name...", function(t)
+        mobSearchText = t
+        showAutoFarm()
+    end)
+    searchInput.Text = mobSearchText
+
+    local mobs = getGameMobs()
+    local filteredMobs = {}
+    if mobSearchText ~= "" then
+        for _, m in ipairs(mobs) do
+            if m:lower():find(mobSearchText:lower()) then
+                filteredMobs[#filteredMobs + 1] = m
+            end
+        end
+    else
+        filteredMobs = mobs
+    end
+
+    if #filteredMobs == 0 then
+        label(contentHolder, "No results found.", UDim2.new(1, 0, 0, 20), nil, 13, Theme.TextMuted, false)
+    else
+        createDropdown(contentHolder, "Choose Target", filteredMobs, selectedMob, function(v)
+            selectedMob = v
+            showAutoFarm()
+        end)
+    end
+end
+
+--// Page: Combat
+local function showCombat()
+    clearContent()
+    selectCombat()
+    
+    label(contentHolder, "Combat & Skills", UDim2.new(1, 0, 0, 24), nil, 18, Theme.Text, true)
+    
+    createCard("Skill Automation", "Select the keys you want to auto-press during combat.", "⚡")
+    
+    createToggle(contentHolder, "ENABLE AUTO SKILL", Settings.AutoSkill, function(v)
+        Settings.AutoSkill = v
+    end)
+    
+    createToggle(contentHolder, "Auto Haki (J)", Settings.AutoHaki, function(v)
+        Settings.AutoHaki = v
+    end)
+    
+    label(contentHolder, "Skill Keys", UDim2.new(1, 0, 0, 20), nil, 14, Theme.TextMuted, true)
+    
+    local keys = {"Z", "X", "C", "V", "B", "F"}
+    for _, key in ipairs(keys) do
+        createToggle(contentHolder, "Auto Press Key [" .. key .. "]", Settings.Skills[key], function(v)
+            Settings.Skills[key] = v
+        end)
+    end
+end
+
+mainBtn.MouseButton1Click:Connect(showDashboard)
+farmBtn.MouseButton1Click:Connect(showAutoFarm)
+combatBtn.MouseButton1Click:Connect(showCombat)
+
+--// Dragging Logic
+local dragToggle = nil
+local dragSpeed = 0.15
+local dragStart = nil
+local startPos = nil
+
+local function updateInput(input)
+    local delta = input.Position - dragStart
+    local position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    tween(main, TweenInfo.new(dragSpeed), {Position = position})
+end
+
+topBar.InputBegan:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
+        dragToggle = true
+        dragStart = input.Position
+        startPos = main.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragToggle = false
+            end
+        end)
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        if dragToggle then
+            updateInput(input)
+        end
+    end
+end)
+
+--// Background Tasks
+local currentTarget = nil
+local lastHakiPress = 0
+
+-- Task to maintain target cache
+task.spawn(function()
+    while screenGui.Parent do
+        if Settings.AutoFarm and selectedMob ~= "None" then
+            if not currentTarget or not currentTarget.Parent or not currentTarget:FindFirstChild("Humanoid") or currentTarget.Humanoid.Health <= 0 then
+                local hrp = findMob(selectedMob)
+                currentTarget = hrp and hrp.Parent
+            end
+        else
+            currentTarget = nil
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- Auto Equip Task
+task.spawn(function()
+    while screenGui.Parent do
+        if Settings.AutoEquip and Settings.SelectedTool ~= "None" and Settings.SelectedTool ~= "No Tools Found" then
+            local char = player.Character
+            if char and not char:FindFirstChild(Settings.SelectedTool) then
+                local tool = player.Backpack:FindFirstChild(Settings.SelectedTool)
+                if tool then
+                    char.Humanoid:EquipTool(tool)
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- Auto Skill Task
+task.spawn(function()
+    local keys = {"Z", "X", "C", "V", "B", "F"}
+    while screenGui.Parent do
+        if Settings.AutoSkill then
+            for _, key in ipairs(keys) do
+                if Settings.Skills[key] then
+                    VIM:SendKeyEvent(true, Enum.KeyCode[key], false, game)
+                    task.wait(0.05)
+                    VIM:SendKeyEvent(false, Enum.KeyCode[key], false, game)
+                    task.wait(0.1)
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end)
+
+-- Auto Teleport Farm Task
+task.spawn(function()
+    while screenGui.Parent do
+        if Settings.AutoFarm then
+            local char = player.Character
+            local hrp = char and char:FindFirstChild("HumanoidRootPart")
+            local hum = char and char:FindFirstChild("Humanoid")
+            
+            if hrp and hum and currentTarget and currentTarget:FindFirstChild("HumanoidRootPart") then
+                local targetHrp = currentTarget.HumanoidRootPart
+                local targetPos = targetHrp.Position + Vector3.new(0, 7, 0)
+                
+                hrp.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                hrp.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                hum.PlatformStand = true
+                
+                char:PivotTo(CFrame.lookAt(targetPos, targetHrp.Position))
+            elseif hum then
+                hum.PlatformStand = false
+            end
+        end
+        task.wait(0.02)
+    end
+end)
+
+-- Auto Haki Task
+task.spawn(function()
+    while screenGui.Parent do
+        if Settings.AutoHaki and tick() - lastHakiPress > 3 then
+            if not isHakiEnabled() then
+                lastHakiPress = tick()
+                VIM:SendKeyEvent(true, Enum.KeyCode.J, false, game)
+                task.wait(0.1)
+                VIM:SendKeyEvent(false, Enum.KeyCode.J, false, game)
+            end
+        end
+        task.wait(1)
+    end
+end)
+
+-- Hotkey to Unload (RightControl)
+UIS.InputBegan:Connect(function(input, gpe)
+    if not gpe then
+        if input.KeyCode == Enum.KeyCode.RightControl then
+            unloadScript()
+        elseif input.KeyCode == Enum.KeyCode.LeftControl then
+            toggleUI()
+        end
+    end
+end)
+
+--// Initialize
+showDashboard()
